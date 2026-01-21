@@ -1,0 +1,10 @@
+MediaPipe 0.10.14
+- This file uses legacy mediapipe API calls (solutions instead of tasks),
+- This is because for at least the first iteration, I wanted to learn more about the MediaPipe/OpenCV communication
+OpenCV
+- For camera interaction
+Screeninfo
+- To get screen size and ratio
+pynput
+- For keyboard/mouse controls
+
