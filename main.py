@@ -4,10 +4,16 @@ from pynput.mouse import Button, Controller
 import numpy as np
 import time
 import screeninfo
+from filterpy.kalman import KalmanFilter
 
 mouse = Controller()
 
 thumb_pressed = False  # track click state
+
+double_click_threshold = 0.3  # seconds
+last_click_time = 0
+
+
 #screen info
 screen = screeninfo.get_monitors()[0]
 screen_width, screen_height = screen.width, screen.height
@@ -42,9 +48,18 @@ hands = mp_hands.Hands(
 
 
 
-#smoothing
-smoothing = 0.5
-prev_x, prev_y = mouse.position
+# Kalman filter for smooth cursor movement
+kf_x = KalmanFilter(dim_x=2, dim_z=1)
+kf_y = KalmanFilter(dim_x=2, dim_z=1)
+
+for kf in [kf_x, kf_y]:
+    kf.x = np.array([0., 0.])   # initial state: position, velocity
+    kf.F = np.array([[1., 1.],
+                     [0., 1.]])
+    kf.H = np.array([[1., 0.]])
+    kf.P *= 1000.
+    kf.R = 5
+    kf.Q = 0.1
 
 while True:
     # Capture frame-by-frame
@@ -67,19 +82,41 @@ while True:
 
         # Mouse movement (index finger)
         index_finger = hand_landmarks.landmark[8]
-        mouse_x = int(prev_x + (index_finger.x * screen_width - prev_x) * smoothing)
-        mouse_y = int(prev_y + (index_finger.y * screen_height - prev_y) * smoothing)
-        mouse.position = (mouse_x, mouse_y)
-        prev_x, prev_y = mouse_x, mouse_y
+
+        raw_x = index_finger.x * screen_width
+        raw_y = index_finger.y * screen_height
+
+        # Kalman filter prediction + update
+        kf_x.predict()
+        kf_y.predict()
+        kf_x.update(raw_x)
+        kf_y.update(raw_y)
+        smooth_x = int(kf_x.x[0])
+        smooth_y = int(kf_y.x[0])
+
+        # Move mouse
+        mouse.position = (smooth_x, smooth_y)
 
         thumb_folded = is_thumb_folded(hand_landmarks)
+        current_time = time.time()
 
-        if thumb_folded and not thumb_pressed:
-            mouse.press(Button.left)
-            thumb_pressed = True
-        elif not thumb_folded and thumb_pressed:
-            mouse.release(Button.left)
-            thumb_pressed = False
+        if thumb_folded:
+            if not thumb_pressed:
+                # Thumb just folded → press mouse
+                mouse.press(Button.left)
+                thumb_pressed = True
+
+                # Double click if previous release was recent
+                if current_time - last_click_time < double_click_threshold:
+                    mouse.click(Button.left, 2)
+                    print("DoubleClick")
+
+        else:
+            if thumb_pressed:
+                # Thumb just released → release mouse
+                mouse.release(Button.left)
+                thumb_pressed = False
+                last_click_time = current_time
 
     # Display the resulting frame in a window named 'Live Camera Feed'
     cv2.imshow('Live Camera Feed', frame)
