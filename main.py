@@ -7,12 +7,24 @@ import screeninfo
 
 mouse = Controller()
 
-
+thumb_pressed = False  # track click state
 #screen info
 screen = screeninfo.get_monitors()[0]
 screen_width, screen_height = screen.width, screen.height
 
 camera = cv2.VideoCapture(0)
+
+
+
+def is_thumb_folded(hand_landmarks):
+    wrist_x = hand_landmarks.landmark[0].x
+    thumb_tip_x = hand_landmarks.landmark[4].x
+    thumb_mcp_x = hand_landmarks.landmark[2].x
+
+    # Thumb folded if tip is between MCP and wrist horizontally
+    return min(wrist_x, thumb_mcp_x) < thumb_tip_x < max(wrist_x, thumb_mcp_x)
+
+
 
 if not camera.isOpened():
     print("Cannot open camera. Check camera index or connection.")
@@ -28,9 +40,11 @@ hands = mp_hands.Hands(
     min_tracking_confidence=0.7
 )
 
+
+
 #smoothing
-prev_x, prev_y = screen_width // 2, screen_height // 2
 smoothing = 0.5
+prev_x, prev_y = mouse.position
 
 while True:
     # Capture frame-by-frame
@@ -46,12 +60,26 @@ while True:
 
     result = hands.process(RGB_frame)
     if result.multi_hand_landmarks:
-        for hand_landmarks in result.multi_hand_landmarks:
-            mp_vis.draw_landmarks(
-                frame,
-                hand_landmarks,
-                mp_hands.HAND_CONNECTIONS
-            )
+        hand_landmarks = result.multi_hand_landmarks[0]
+
+        # Draw hand
+        mp_vis.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+        # Mouse movement (index finger)
+        index_finger = hand_landmarks.landmark[8]
+        mouse_x = int(prev_x + (index_finger.x * screen_width - prev_x) * smoothing)
+        mouse_y = int(prev_y + (index_finger.y * screen_height - prev_y) * smoothing)
+        mouse.position = (mouse_x, mouse_y)
+        prev_x, prev_y = mouse_x, mouse_y
+
+        thumb_folded = is_thumb_folded(hand_landmarks)
+
+        if thumb_folded and not thumb_pressed:
+            mouse.press(Button.left)
+            thumb_pressed = True
+        elif not thumb_folded and thumb_pressed:
+            mouse.release(Button.left)
+            thumb_pressed = False
 
     # Display the resulting frame in a window named 'Live Camera Feed'
     cv2.imshow('Live Camera Feed', frame)
