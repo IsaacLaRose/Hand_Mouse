@@ -19,7 +19,7 @@ if not camera.isOpened():
     exit() #No Camera is detected or cannot be accessed
 
 
-
+mp_vis = mp.solutions.drawing_utils
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
@@ -35,16 +35,26 @@ smoothing = 0.5
 while True:
     # Capture frame-by-frame
     ret, frame = camera.read()
+    frame = cv2.flip(frame, 1) #Flip camera so that it works more like a mirror
 
     # If the frame is not read correctly, 'ret' is False
     if not ret:
         print("Can't receive frame (stream end?). Exiting ...")
         break
 
+    RGB_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    result = hands.process(RGB_frame)
+    if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            mp_vis.draw_landmarks(
+                frame,
+                hand_landmarks,
+                mp_hands.HAND_CONNECTIONS
+            )
+
     # Display the resulting frame in a window named 'Live Camera Feed'
     cv2.imshow('Live Camera Feed', frame)
-
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
     # q exits
